@@ -12,7 +12,7 @@ const data = [
 export default function ActivityChart() {
   return (
     <div className="h-[200px] w-full mt-4">
-      <ResponsiveContainer width="100%" height="100%">
+      <ResponsiveContainer width="100%" height={200}>
         <BarChart data={data}>
           <XAxis 
             dataKey="day" 
