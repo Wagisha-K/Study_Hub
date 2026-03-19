@@ -17,24 +17,66 @@ export default function Dashboard() {
   const [running, setRunning] = useState(false);
   const [randomNote, setRandomNote] = useState<any | null>(null);
   const [mounted, setMounted] = useState(false);
+  
+  // 🔥 NEW: Streak State
+  const [streak, setStreak] = useState(0);
 
-  // 🔥 1. SECURE FETCH: Only get notes belonging to the logged-in user
+  // 1. Fetch Notes
   const fetchNotes = async () => {
     const { data: { user } } = await supabase.auth.getUser();
-    
     if (user) {
       const { data, error } = await supabase
         .from("notes")
         .select("*")
-        .eq("user_id", user.id) // Filter by user ID
+        .eq("user_id", user.id)
         .order("created_at", { ascending: false });
       
-      if (error) console.error("Error fetching:", error.message);
+      if (error) console.error("Error fetching notes:", error.message);
       if (data) setNotes(data);
     }
   };
 
-  // 🔥 2. SESSION GUARD: Redirect if not logged in
+  // 🔥 NEW: Streak Update Logic
+  const updateStreak = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    // Fetch current profile
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('current_streak, last_study_date')
+      .eq('id', user.id)
+      .single();
+
+    const today = new Date().toISOString().split('T')[0];
+    const lastDate = profile?.last_study_date;
+    let newStreak = profile?.current_streak || 0;
+
+    if (lastDate === today) return; // Already updated today
+
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = yesterday.toISOString().split('T')[0];
+
+    if (lastDate === yesterdayStr) {
+      newStreak += 1;
+    } else {
+      newStreak = 1; // Reset if they missed a day
+    }
+
+    const { error } = await supabase
+      .from('profiles')
+      .upsert({ 
+        id: user.id, 
+        current_streak: newStreak, 
+        last_study_date: today,
+        updated_at: new Date().toISOString()
+      });
+
+    if (!error) setStreak(newStreak);
+  };
+
+  // 2. Session Guard & Initial Fetch
   useEffect(() => {
     setMounted(true);
     const checkUser = async () => {
@@ -43,51 +85,38 @@ export default function Dashboard() {
         router.push("/login");
       } else {
         fetchNotes();
+        // Fetch streak on load
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('current_streak')
+          .eq('id', user.id)
+          .single();
+        if (profile) setStreak(profile.current_streak);
       }
     };
     checkUser();
   }, [router]);
 
-  // 🔥 3. SECURE SAVE: Tag every note with the user's ID
+  // 3. Save Note
   const saveNote = async () => {
     if (!title.trim() && !content.trim()) return;
-
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      alert("Session expired. Please log in again.");
-      return;
-    }
+    if (!user) return;
 
-    const payload = { 
-      title, 
-      content, 
-      user_id: user.id // MUST match the RLS policy
-    };
-
+    const payload = { title, content, user_id: user.id };
     const { error } = selectedId 
       ? await supabase.from("notes").update(payload).eq("id", selectedId)
       : await supabase.from("notes").insert([payload]);
 
-    if (error) {
-      console.error("Save error:", error.message);
-      alert("Failed to save: " + error.message);
-    } else {
-      setTitle(""); 
-      setContent(""); 
-      setSelectedId(null); 
-      fetchNotes(); 
+    if (!error) {
+      setTitle(""); setContent(""); setSelectedId(null); fetchNotes(); 
     }
   };
 
   const deleteNote = async () => {
     if (!selectedId || !confirm("Delete this note?")) return;
     const { error } = await supabase.from("notes").delete().eq("id", selectedId);
-    if (!error) { 
-      setTitle(""); 
-      setContent(""); 
-      setSelectedId(null); 
-      fetchNotes(); 
-    }
+    if (!error) { setTitle(""); setContent(""); setSelectedId(null); fetchNotes(); }
   };
 
   const handleLogout = async () => {
@@ -98,16 +127,20 @@ export default function Dashboard() {
   const pickRevisionNote = () => {
     if (notes.length === 0) return;
     const sorted = [...notes].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-    const half = Math.floor(sorted.length / 2);
-    const pool = sorted.slice(0, half || 1);
-    const randomIndex = Math.floor(Math.random() * pool.length);
-    setRandomNote(pool[randomIndex]);
+    const pool = sorted.slice(0, Math.floor(sorted.length / 2) || 1);
+    setRandomNote(pool[Math.floor(Math.random() * pool.length)]);
   };
 
+  // 🔥 Updated Timer Logic with Streak Trigger
   useEffect(() => {
     let int = setInterval(() => {
-      if (running && time > 0) setTime(t => t - 1);
-      else if (time === 0) setRunning(false);
+      if (running && time > 0) {
+        setTime(t => t - 1);
+      } else if (time === 0 && running) {
+        setRunning(false);
+        updateStreak(); // Update fire streak when timer hits 0
+        alert("Great job! Your study streak has been updated. 🔥");
+      }
     }, 1000);
     return () => clearInterval(int);
   }, [running, time]);
@@ -178,8 +211,19 @@ export default function Dashboard() {
             />
           </main>
 
-          {/* RIGHT SIDE (TIMER & STATS) */}
+          {/* RIGHT SIDE (TIMER & STREAK) */}
           <aside className="space-y-6">
+            {/* 🔥 NEW: STREAK WIDGET */}
+            <div className={`${glass} p-6 flex items-center justify-between border-orange-500/20 bg-orange-500/5`}>
+               <div className="flex items-center gap-4">
+                  <span className="text-4xl animate-bounce" style={{ animationDuration: '3s' }}>🔥</span>
+                  <div>
+                    <p className="text-[10px] uppercase tracking-widest text-orange-400 font-black">Daily Streak</p>
+                    <p className="text-2xl font-black text-white">{streak} Days</p>
+                  </div>
+               </div>
+            </div>
+
             <div className={`${glass} p-8 text-center`}>
               <h4 className="text-[10px] uppercase tracking-[0.3em] text-[#B7A1CE] mb-6 font-black opacity-60">Focus Timer</h4>
               <input 
@@ -218,10 +262,9 @@ export default function Dashboard() {
               </div>
               <button onClick={pickRevisionNote} className={`${btnBase} w-full bg-white/5 border-white/10 hover:bg-white/10`}>Revise Now!</button>
               {randomNote && (
-                 <div className="p-5 bg-[#7C6992]/10 border border-[#7C6992]/30 rounded-2xl animate-in fade-in zoom-in-95">
+                 <div className="p-5 bg-[#7C6992]/10 border border-[#7C6992]/30 rounded-2xl">
                     <p className="text-[9px] text-[#B7A1CE] uppercase font-black mb-2">Revision Pick</p>
                     <p className="text-sm font-bold text-white mb-2 truncate">{randomNote.title}</p>
-                    <p className="text-xs text-[#B7A1CE] line-clamp-3 mb-3">{randomNote.content}</p>
                     <button 
                       onClick={() => { setTitle(randomNote.title); setContent(randomNote.content); setSelectedId(randomNote.id); }}
                       className="text-[10px] font-bold uppercase tracking-widest px-4 py-2 rounded-lg bg-[#7C6992] hover:scale-105 transition"
