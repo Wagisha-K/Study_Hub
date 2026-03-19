@@ -105,7 +105,10 @@ export default function Dashboard() {
   const updateStreak = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
-
+    const minutesStudied = Math.floor(initialTime / 60);
+  await supabase.from('study_logs').insert([
+    { user_id: user.id, minutes_spent: minutesStudied }
+  ]);
     const { data: profile } = await supabase
       .from('profiles')
       .select('current_streak, last_study_date')
