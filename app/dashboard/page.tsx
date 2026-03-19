@@ -6,6 +6,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import SpaceBackground from "@/components/SpaceBackground";
 import confetti from "canvas-confetti";
+import ActivityChart from "@/components/ActivityChart";
 
 export default function Dashboard() {
   const router = useRouter();
@@ -169,7 +170,7 @@ export default function Dashboard() {
       <SpaceBackground />
       <div className="relative z-10">
         <Navbar />
-        <div className="max-w-[1400px] mx-auto p-6 grid grid-cols-1 lg:grid-cols-[260px_1fr_300px] gap-8">
+        <div className="max-w-[1400px] mx-auto p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-[260px_1fr_300px] gap-8">
           
           {/* SIDEBAR */}
           <aside className="flex flex-col h-[760px]">
@@ -228,7 +229,8 @@ export default function Dashboard() {
 
             <div className={`${glass} p-8 text-center flex flex-col items-center`}>
               <h4 className="text-[10px] uppercase tracking-[0.3em] text-[#B7A1CE] mb-6 font-black opacity-60">Focus Timer</h4>
-              
+              <ActivityChart />
+
               <div className="relative w-48 h-48 flex items-center justify-center mb-6">
                 <svg className="absolute w-full h-full transform -rotate-90">
                   <circle cx="96" cy="96" r="88" stroke="#433D8B" strokeWidth="8" strokeOpacity="0.2" fill="transparent" />
