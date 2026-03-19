@@ -90,7 +90,7 @@ export default function Dashboard() {
   const triggerConfetti = () => {
     const duration = 3 * 1000;
     const animationEnd = Date.now() + duration;
-    const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 0 };
+    const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 9999 };
 
     const interval: any = setInterval(function() {
       const timeLeft = animationEnd - Date.now();
