@@ -2,34 +2,68 @@
 
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
+import { useRouter } from "next/navigation";
 import Navbar from "@/components/Navbar";
 import SpaceBackground from "@/components/SpaceBackground";
+
 export default function Resources() {
+  const router = useRouter();
   const [title, setTitle] = useState("");
   const [link, setLink] = useState("");
   const [resources, setResources] = useState<any[]>([]);
+  const [mounted, setMounted] = useState(false);
 
+  // 🔥 1. SECURE FETCH: Filter by the logged-in user
   const fetchResources = async () => {
-    const { data, error } = await supabase
-      .from("resources")
-      .select("*")
-      .order("created_at", { ascending: false });
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    if (user) {
+      const { data, error } = await supabase
+        .from("resources")
+        .select("*")
+        .eq("user_id", user.id) // Only get MY resources
+        .order("created_at", { ascending: false });
 
-    if (!error) setResources(data || []);
+      if (!error) setResources(data || []);
+    }
   };
 
+  // 🔥 2. SESSION GUARD: Ensure user is logged in
+  useEffect(() => {
+    setMounted(true);
+    const checkUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        router.push("/login");
+      } else {
+        fetchResources();
+      }
+    };
+    checkUser();
+  }, [router]);
+
+  // 🔥 3. SECURE ADD: Tag resource with user_id
   const addResource = async () => {
     if (!title.trim() || !link.trim()) {
       alert("Please enter title and link");
       return;
     }
 
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
     const { error } = await supabase.from("resources").insert([
-      { title, link, type: "link" }
+      { 
+        title, 
+        link, 
+        type: "link", 
+        user_id: user.id // Tag with owner's ID
+      }
     ]);
 
     if (error) {
-      alert("Error saving resource");
+      console.error(error.message);
+      alert("Error saving resource: " + error.message);
     } else {
       setTitle("");
       setLink("");
@@ -44,16 +78,14 @@ export default function Resources() {
     else fetchResources();
   };
 
-  useEffect(() => {
-    fetchResources();
-  }, []);
+  if (!mounted) return null;
 
   return (
     <div className="min-h-screen bg-[#17153B] text-white font-inter">
       <SpaceBackground />
       <Navbar />
 
-      <div className="max-w-5xl mx-auto p-8">
+      <div className="max-w-5xl mx-auto p-8 relative z-10">
         
         {/* Header Section */}
         <div className="mb-12">
@@ -116,7 +148,6 @@ export default function Resources() {
                       {r.link.includes('youtube') ? '📺 Video' : r.link.includes('pdf') ? '📄 PDF' : '🔗 Link'}
                     </span>
                     
-                    {/* Delete Button with Red Glow */}
                     <button
                       onClick={() => deleteResource(r.id)}
                       className="p-2 text-red-500/40 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all hover:shadow-[0_0_15px_rgba(239,68,68,0.3)]"
@@ -133,6 +164,7 @@ export default function Resources() {
                 <a
                   href={r.link}
                   target="_blank"
+                  rel="noopener noreferrer"
                   className="mt-6 flex items-center justify-center w-full py-3 rounded-xl bg-[#17153B] border border-[#433D8B] text-xs font-bold uppercase tracking-[0.2em] text-[#C8ACD6]/60 hover:text-[#C8ACD6] hover:border-[#C8ACD6]/50 transition-all"
                 >
                   Open Resource
@@ -141,7 +173,6 @@ export default function Resources() {
             </div>
           ))}
         </div>
-
       </div>
     </div>
   );
