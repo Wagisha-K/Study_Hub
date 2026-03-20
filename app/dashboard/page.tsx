@@ -105,10 +105,13 @@ export default function Dashboard() {
   const updateStreak = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
+    
+    // Log the session for the real chart data
     const minutesStudied = Math.floor(initialTime / 60);
-  await supabase.from('study_logs').insert([
-    { user_id: user.id, minutes_spent: minutesStudied }
-  ]);
+    await supabase.from('study_logs').insert([
+      { user_id: user.id, minutes_spent: minutesStudied }
+    ]);
+
     const { data: profile } = await supabase
       .from('profiles')
       .select('current_streak, last_study_date')
@@ -173,17 +176,39 @@ export default function Dashboard() {
       <SpaceBackground />
       <div className="relative z-10">
         <Navbar />
-        <div className="max-w-[1400px] mx-auto p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-[260px_1fr_300px] gap-8">
+        <div className="max-w-[1400px] mx-auto p-6 grid grid-cols-1 lg:grid-cols-[260px_1fr_300px] gap-8">
           
-          {/* SIDEBAR */}
-          <aside className="flex flex-col h-[760px]">
+          {/* SIDEBAR (Responsive List/Dropdown) */}
+          <aside className="flex flex-col lg:h-[760px] gap-4">
             <input 
               placeholder="Search notes..." 
               value={search} 
               onChange={e => setSearch(e.target.value)}
-              className="w-full p-4 mb-4 rounded-2xl bg-[#0A0920]/40 border border-[#433D8B] text-sm outline-none focus:border-[#7C6992] transition-all placeholder:text-white/20" 
+              className="w-full p-4 rounded-2xl bg-[#0A0920]/40 border border-[#433D8B] text-sm outline-none focus:border-[#7C6992] transition-all placeholder:text-white/20" 
             />
-            <div className="space-y-2 flex-1 overflow-y-auto pr-2 custom-scrollbar">
+
+            {/* Mobile Dropdown - Visible only on mobile/tablet */}
+            <div className="lg:hidden relative">
+              <select 
+                className="w-full p-4 rounded-2xl bg-[#2E236C]/30 border border-[#433D8B] text-white text-sm outline-none appearance-none cursor-pointer"
+                value={selectedId || ""}
+                onChange={(e) => {
+                  const n = notes.find(note => note.id === Number(e.target.value));
+                  if (n) { setTitle(n.title); setContent(n.content); setSelectedId(n.id); }
+                }}
+              >
+                <option value="" disabled className="bg-[#17153B]">--- Select a Note ---</option>
+                {notes.filter(n => n.title?.toLowerCase().includes(search.toLowerCase())).map(n => (
+                  <option key={n.id} value={n.id} className="bg-[#17153B]">
+                    {n.title || "Untitled"}
+                  </option>
+                ))}
+              </select>
+              <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none opacity-50 text-xs">▼</div>
+            </div>
+
+            {/* Desktop List - Hidden on mobile */}
+            <div className="hidden lg:block space-y-2 flex-1 overflow-y-auto pr-2 custom-scrollbar">
               {notes.filter(n => n.title?.toLowerCase().includes(search.toLowerCase())).map(n => (
                 <div 
                   key={n.id} 
@@ -197,7 +222,7 @@ export default function Dashboard() {
           </aside>
 
           {/* EDITOR */}
-          <main className={`${glass} flex flex-col h-[760px] overflow-hidden`}>
+          <main className={`${glass} flex flex-col h-[600px] lg:h-[760px] overflow-hidden`}>
             <div className="p-8 border-b border-[#433D8B]/30 flex flex-col md:flex-row gap-6 bg-white/5 items-center">
               <input 
                 value={title} 
@@ -218,7 +243,7 @@ export default function Dashboard() {
             />
           </main>
 
-          {/* RIGHT SIDE */}
+          {/* RIGHT SIDEBAR */}
           <aside className="space-y-6">
             <div className={`${glass} p-6 flex items-center border-orange-500/20 bg-orange-500/5`}>
                <div className="flex items-center gap-4">
@@ -232,8 +257,7 @@ export default function Dashboard() {
 
             <div className={`${glass} p-8 text-center flex flex-col items-center`}>
               <h4 className="text-[10px] uppercase tracking-[0.3em] text-[#B7A1CE] mb-6 font-black opacity-60">Focus Timer</h4>
-              <ActivityChart />
-
+              
               <div className="relative w-48 h-48 flex items-center justify-center mb-6">
                 <svg className="absolute w-full h-full transform -rotate-90">
                   <circle cx="96" cy="96" r="88" stroke="#433D8B" strokeWidth="8" strokeOpacity="0.2" fill="transparent" />
@@ -264,8 +288,14 @@ export default function Dashboard() {
               </div>
             </div>
 
+            {/* QUICK STATS & CHART */}
             <div className={`${glass} p-6 space-y-4`}>
-              <div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-[#B7A1CE]">
+              <h4 className="text-[10px] uppercase tracking-[0.3em] text-[#B7A1CE] font-black opacity-60">Weekly Activity</h4>
+              
+              {/* This chart now uses real data from your study_logs table */}
+              <ActivityChart />
+
+              <div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-[#B7A1CE] pt-4 border-t border-[#433D8B]/20">
                 <span>Words: {content.trim() ? content.split(/\s+/).length : 0}</span>
                 <span>Chars: {content.length}</span>
               </div>
