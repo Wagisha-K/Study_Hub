@@ -19,8 +19,9 @@ export default function Dashboard() {
   const [search, setSearch] = useState("");
   const [mounted, setMounted] = useState(false);
   const [randomNote, setRandomNote] = useState<any | null>(null);
-
-  // STREAK & TIMER STATE
+  
+  // POMODORO STATE
+  const [isBreak, setIsBreak] = useState(false); 
   const [streak, setStreak] = useState(0);
   const [time, setTime] = useState(1500); 
   const [initialTime, setInitialTime] = useState(1500); 
@@ -102,42 +103,56 @@ export default function Dashboard() {
     }, 250);
   };
 
+  const skipBreak = () => {
+    setIsBreak(false);
+    setRunning(false);
+    setTime(1500); // Reset to 25 mins
+    setInitialTime(1500);
+  };
+
   const updateStreak = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
-    
-    // Log the session for the real chart data
-    const minutesStudied = Math.floor(initialTime / 60);
-    await supabase.from('study_logs').insert([
-      { user_id: user.id, minutes_spent: minutesStudied }
-    ]);
 
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('current_streak, last_study_date')
-      .eq('id', user.id)
-      .single();
+    if (!isBreak) {
+      const minutesStudied = Math.floor(initialTime / 60);
+      await supabase.from('study_logs').insert([
+        { user_id: user.id, minutes_spent: minutesStudied }
+      ]);
 
-    const today = new Date().toISOString().split('T')[0];
-    const lastDate = profile?.last_study_date;
-    let newStreak = profile?.current_streak || 0;
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('current_streak, last_study_date')
+        .eq('id', user.id)
+        .single();
 
-    if (lastDate !== today) {
-        const yesterday = new Date();
-        yesterday.setDate(yesterday.getDate() - 1);
-        const yesterdayStr = yesterday.toISOString().split('T')[0];
+      const today = new Date().toISOString().split('T')[0];
+      const lastDate = profile?.last_study_date;
+      let newStreak = profile?.current_streak || 0;
 
-        newStreak = (lastDate === yesterdayStr) ? newStreak + 1 : 1;
+      if (lastDate !== today) {
+          const yesterday = new Date();
+          yesterday.setDate(yesterday.getDate() - 1);
+          const yesterdayStr = yesterday.toISOString().split('T')[0];
+          newStreak = (lastDate === yesterdayStr) ? newStreak + 1 : 1;
 
-        await supabase.from('profiles').upsert({ 
-          id: user.id, 
-          current_streak: newStreak, 
-          last_study_date: today,
-          updated_at: new Date().toISOString()
-        });
-        setStreak(newStreak);
+          await supabase.from('profiles').upsert({ 
+            id: user.id, 
+            current_streak: newStreak, 
+            last_study_date: today,
+            updated_at: new Date().toISOString()
+          });
+          setStreak(newStreak);
+      }
+      triggerConfetti();
+      
+      setIsBreak(true);
+      setTime(300); // 5 minutes
+      setInitialTime(300);
+      setRunning(true);
+    } else {
+      skipBreak();
     }
-    triggerConfetti();
   };
 
   // --- 4. TIMER FUNCTIONS ---
@@ -178,7 +193,6 @@ export default function Dashboard() {
         <Navbar />
         <div className="max-w-[1400px] mx-auto p-6 grid grid-cols-1 lg:grid-cols-[260px_1fr_300px] gap-8">
           
-          {/* SIDEBAR (Responsive List/Dropdown) */}
           <aside className="flex flex-col lg:h-[760px] gap-4">
             <input 
               placeholder="Search notes..." 
@@ -187,7 +201,6 @@ export default function Dashboard() {
               className="w-full p-4 rounded-2xl bg-[#0A0920]/40 border border-[#433D8B] text-sm outline-none focus:border-[#7C6992] transition-all placeholder:text-white/20" 
             />
 
-            {/* Mobile Dropdown - Visible only on mobile/tablet */}
             <div className="lg:hidden relative">
               <select 
                 className="w-full p-4 rounded-2xl bg-[#2E236C]/30 border border-[#433D8B] text-white text-sm outline-none appearance-none cursor-pointer"
@@ -199,15 +212,12 @@ export default function Dashboard() {
               >
                 <option value="" disabled className="bg-[#17153B]">--- Select a Note ---</option>
                 {notes.filter(n => n.title?.toLowerCase().includes(search.toLowerCase())).map(n => (
-                  <option key={n.id} value={n.id} className="bg-[#17153B]">
-                    {n.title || "Untitled"}
-                  </option>
+                  <option key={n.id} value={n.id} className="bg-[#17153B]">{n.title || "Untitled"}</option>
                 ))}
               </select>
               <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none opacity-50 text-xs">▼</div>
             </div>
 
-            {/* Desktop List - Hidden on mobile */}
             <div className="hidden lg:block space-y-2 flex-1 overflow-y-auto pr-2 custom-scrollbar">
               {notes.filter(n => n.title?.toLowerCase().includes(search.toLowerCase())).map(n => (
                 <div 
@@ -221,7 +231,6 @@ export default function Dashboard() {
             </div>
           </aside>
 
-          {/* EDITOR */}
           <main className={`${glass} flex flex-col h-[600px] lg:h-[760px] overflow-hidden`}>
             <div className="p-8 border-b border-[#433D8B]/30 flex flex-col md:flex-row gap-6 bg-white/5 items-center">
               <input 
@@ -243,7 +252,6 @@ export default function Dashboard() {
             />
           </main>
 
-          {/* RIGHT SIDEBAR */}
           <aside className="space-y-6">
             <div className={`${glass} p-6 flex items-center border-orange-500/20 bg-orange-500/5`}>
                <div className="flex items-center gap-4">
@@ -256,17 +264,21 @@ export default function Dashboard() {
             </div>
 
             <div className={`${glass} p-8 text-center flex flex-col items-center`}>
-              <h4 className="text-[10px] uppercase tracking-[0.3em] text-[#B7A1CE] mb-6 font-black opacity-60">Focus Timer</h4>
+              <h4 className={`text-[10px] uppercase tracking-[0.3em] mb-6 font-black ${isBreak ? 'text-emerald-400' : 'text-[#B7A1CE] opacity-60'}`}>
+                {isBreak ? "♨️ Break Time" : "🚀 Focus Timer"}
+              </h4>
               
               <div className="relative w-48 h-48 flex items-center justify-center mb-6">
                 <svg className="absolute w-full h-full transform -rotate-90">
                   <circle cx="96" cy="96" r="88" stroke="#433D8B" strokeWidth="8" strokeOpacity="0.2" fill="transparent" />
                   <circle 
-                    cx="96" cy="96" r="88" stroke="#7C6992" strokeWidth="8" fill="transparent"
+                    cx="96" cy="96" r="88" 
+                    stroke={isBreak ? "#10b981" : "#7C6992"} 
+                    strokeWidth="8" fill="transparent"
                     strokeDasharray={553} 
                     strokeDashoffset={553 - (553 * (time / initialTime))}
                     strokeLinecap="round"
-                    className="transition-all duration-1000 ease-linear shadow-[0_0_10px_#7C6992]"
+                    className={`transition-all duration-1000 ease-linear ${isBreak ? 'shadow-[0_0_15px_#10b981]' : 'shadow-[0_0_15px_#7C6992]'}`}
                   />
                 </svg>
                 <input 
@@ -284,17 +296,29 @@ export default function Dashboard() {
               <div className="grid grid-cols-2 gap-2 w-full">
                 <button onClick={startTimer} className={`${btnBase} bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500 hover:text-white`}>Start</button>
                 <button onClick={() => setRunning(false)} className={`${btnBase} bg-amber-500/10 border-amber-500/20 text-amber-400 hover:bg-amber-500 hover:text-white`}>Pause</button>
-                <button onClick={() => {setRunning(false); setTime(1500); setInitialTime(1500);}} className={`${btnBase} col-span-2 bg-white/5 border-white/10`}>Reset to 25m</button>
+                
+                {/* Condition-based Skip/Reset button */}
+                {isBreak ? (
+                   <button 
+                   onClick={skipBreak} 
+                   className={`${btnBase} col-span-2 bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500 hover:text-white font-black`}
+                 >
+                   ⏭️ Skip Break
+                 </button>
+                ) : (
+                  <button 
+                    onClick={() => {setRunning(false); setTime(1500); setInitialTime(1500);}} 
+                    className={`${btnBase} col-span-2 bg-white/5 border-white/10`}
+                  >
+                    Reset to 25m
+                  </button>
+                )}
               </div>
             </div>
 
-            {/* QUICK STATS & CHART */}
             <div className={`${glass} p-6 space-y-4`}>
               <h4 className="text-[10px] uppercase tracking-[0.3em] text-[#B7A1CE] font-black opacity-60">Weekly Activity</h4>
-              
-              {/* This chart now uses real data from your study_logs table */}
               <ActivityChart />
-
               <div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-[#B7A1CE] pt-4 border-t border-[#433D8B]/20">
                 <span>Words: {content.trim() ? content.split(/\s+/).length : 0}</span>
                 <span>Chars: {content.length}</span>
